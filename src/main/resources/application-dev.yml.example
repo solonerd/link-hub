@@ -1,0 +1,100 @@
+# ==================== 开发环境（dev）示例模板 ====================
+# 使用方式：
+#   1. 复制本文件为 application-dev.yml
+#   2. application-dev.yml 已被 .gitignore 忽略，不会提交
+#   3. 敏感值（密码、JWT key）从项目根目录的 .env 读取
+# ==================== 开发环境（dev） ====================
+# 本文件已被 .gitignore 忽略，不会提交
+# 只放和运行环境强相关的配置，敏感值走 .env 占位符
+
+# ====================== 邮件 ======================
+spring:
+  mail:
+    host: smtp.qq.com
+    port: 587
+    username: ${MAIL_USERNAME:your_mail@example.com}
+    password: ${MAIL_PASSWORD}
+    default-encoding: UTF-8
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+    protocol: smtp
+
+  # ====================== MySQL ======================
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:13001/shortlink_db?useUnicode=true&characterEncoding=UTF-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: root
+    password: ${MYSQL_PASSWORD}
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      idle-timeout: 300000
+      connection-timeout: 20000
+
+  # ====================== Redis 单机 ======================
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password: ${REDIS_PASSWORD}
+      timeout: 10s
+      lettuce:
+        pool:
+          max-active: 50
+          max-idle: 20
+          min-idle: 5
+
+  # ====================== Redis 集群（需要时取消注释，注释上面的单机配置） ======================
+  # data:
+  #   redis:
+  #     password: ${REDIS_PASSWORD}
+  #     timeout: 10s
+  #     cluster:
+  #       nodes:
+  #         - localhost:7001
+  #         - localhost:7002
+  #         - localhost:7003
+  #         - localhost:7004
+  #         - localhost:7005
+  #         - localhost:7006
+  #       max-redirects: 3
+  #     lettuce:
+  #       pool:
+  #         max-active: 50
+  #         max-idle: 20
+  #         min-idle: 5
+
+  # ====================== RabbitMQ ======================
+  rabbitmq:
+    host: localhost
+    port: 25672
+    username: ${RABBITMQ_USER}
+    password: ${RABBITMQ_PASS}
+    virtual-host: /
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
+    listener:
+      simple:
+        acknowledge-mode: auto
+        default-requeue-rejected: false
+        retry:
+          enabled: true
+          max-attempts: 3
+          initial-interval: 1000ms
+          multiplier: 2.0
+          max-interval: 10000ms
+
+# ====================== 日志（dev 更详细） ======================
+logging:
+  level:
+    com.linkhub: debug
+    org.springframework.web: info
+    com.baomidou.mybatisplus: debug
+    org.springframework.security: info

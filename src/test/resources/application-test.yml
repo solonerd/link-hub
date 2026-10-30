@@ -1,0 +1,46 @@
+# ==================== 测试环境 ====================
+# 目标：不改 dev 配置的前提下，让 @SpringBootTest 能启动完整容器
+# 前置：Redis + MySQL 必须已启动（RabbitMQ 可以不启）
+
+spring:
+  # ---------- 数据源：复用 dev 的 MySQL，换个库 ----------
+  datasource:
+    url: jdbc:mysql://localhost:13001/shortlink_db?useUnicode=true&characterEncoding=UTF-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: root
+    password: ${MYSQL_PASSWORD}
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 1
+
+  # ---------- Redis：复用 dev ----------
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password: ${REDIS_PASSWORD}
+      timeout: 5s
+
+  # ---------- RabbitMQ：只配连接信息，但不起监听器 ----------
+  rabbitmq:
+    host: localhost
+    port: 25672
+    username: ${RABBITMQ_USER}
+    password: ${RABBITMQ_PASS}
+    listener:
+      simple:
+        auto-startup: false   # 🔑 关键：不起 @RabbitListener，不连 broker
+        retry:
+          enabled: false
+
+  # ---------- 邮件：给个占位，避免 @Value 解析失败 ----------
+  mail:
+    host: localhost
+    port: 25
+    username: no-reply@test.local
+
+# ====================== 日志 ======================
+logging:
+  level:
+    com.linkhub: info
+    org.springframework.security: warn
+    org.springframework.amqp: warn   # 屏蔽 RabbitMQ 启动告警

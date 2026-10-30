@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>Link-Hub 智能助手</title>
+    <style>
+        body { font-family: 'Microsoft YaHei', sans-serif; background-color: #f4f7f6; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        h2 { text-align: center; color: #333; }
+        .input-group { display: flex; gap: 10px; margin-bottom: 15px; }
+        input[type="text"] { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 5px; outline: none; }
+        button { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        #chatBox { height: 400px; border: 1px solid #eee; border-radius: 5px; padding: 15px; overflow-y: auto; background: #fafafa; margin-bottom: 15px; }
+        .message { margin-bottom: 15px; line-height: 1.6; }
+        .msg-user { text-align: right; }
+        .msg-user span { background: #007bff; color: white; padding: 8px 12px; border-radius: 10px; display: inline-block; max-width: 80%; text-align: left; }
+        .msg-ai { text-align: left; }
+        .msg-ai span { background: #e9ecef; color: #333; padding: 8px 12px; border-radius: 10px; display: inline-block; max-width: 80%; text-align: left; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h2>🤖 Link-Hub 智能短链助手</h2>
+
+    <!-- 用来填 Token 的框 -->
+    <div class="input-group">
+        <input type="text" id="tokenInput" placeholder="请粘贴你的 AccessToken" />
+    </div>
+
+    <div id="chatBox"></div>
+
+    <div class="input-group">
+        <input type="text" id="messageInput" placeholder="请输入您的问题..." onkeydown="if(event.key==='Enter') sendMessage()" />
+        <button id="sendBtn" onclick="sendMessage()">发送</button>
+    </div>
+</div>
+
+<script>
+    const chatBox = document.getElementById('chatBox');
+    const messageInput = document.getElementById('messageInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const tokenInput = document.getElementById('tokenInput');
+
+    async function sendMessage() {
+        const message = messageInput.value.trim();
+        const token = tokenInput.value.trim();
+
+        if (!message) return;
+        if (!token) {
+            alert("请先粘贴你的 AccessToken！");
+            return;
+        }
+
+        // 显示用户消息
+        appendMessage('user', message);
+        messageInput.value = '';
+        sendBtn.disabled = true;
+
+        // 创建一个专门用来接收 AI 流式消息的 DOM 节点
+        const aiMsgSpan = document.createElement('span');
+        const aiMsgDiv = document.createElement('div');
+        aiMsgDiv.className = 'message msg-ai';
+        aiMsgDiv.appendChild(aiMsgSpan);
+        chatBox.appendChild(aiMsgDiv);
+        chatBox.scrollTop = chatBox.scrollHeight;
+
+        try {
+            // 🌟 核心：使用 fetch 接收流式请求
+            const response = await fetch('http://localhost:18080/agent/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + token
+                },
+                body: JSON.stringify({ message: message })
+            });
+
+            if (!response.ok) throw new Error('HTTP error ' + response.status);
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder('utf-8');
+            let buffer = '';
+
+            // 🌟 循环读取流数据
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+
+                // 处理 SSE 格式（以 data: 开头的每一行）
+                const lines = buffer.split('\n');
+                buffer = lines.pop(); // 把最后不完整的一行留给下一次循环
+
+                for (const line of lines) {
+                    if (line.startsWith('data:')) {
+                        // 提取内容并追加到页面
+                        const content = line.substring(5).trim();
+                        if (content) {
+                            aiMsgSpan.textContent += content;
+                            chatBox.scrollTop = chatBox.scrollHeight; // 保持滚动条在最下面
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            aiMsgSpan.textContent = "请求失败：" + error.message;
+        } finally {
+            sendBtn.disabled = false;
+            messageInput.focus();
+        }
+    }
+
+    function appendMessage(role, text) {
+        const div = document.createElement('div');
+        div.className = 'message msg-' + role;
+        div.innerHTML = `<span>${text}</span>`;
+        chatBox.appendChild(div);
+        chatBox.scrollTop = chatBox.scrollHeight;
+    }
+</script>
+</body>
+</html>

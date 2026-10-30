@@ -1,0 +1,68 @@
+# ==================== 测试环境（test） ====================
+# 用于单元测试和集成测试，使用独立数据库，避免污染开发数据
+spring:
+  # ====================== 邮件配置（测试时禁用发邮件） ======================
+  mail:
+    host: smtp.qq.com
+    port: 465
+    username: ${MAIL_USERNAME:no-reply@test.local}
+    password: ${MAIL_PASSWORD:test-password}
+    protocol: smtps
+    default-encoding: UTF-8
+    properties:
+      mail:
+        smtp:
+          auth: true
+          ssl:
+            enable: true
+            required: true
+
+  # ====================== 数据源 ======================
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3307/shortlink_db_test?useUnicode=true&characterEncoding=UTF-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: root
+    password: ${MYSQL_PASSWORD:test-password}
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      idle-timeout: 300000
+      connection-timeout: 20000
+
+  # ====================== Redis 集群（测试时用单机） ======================
+  data:
+    redis:
+      password: ${REDIS_PASSWORD:test-password}
+      host: localhost
+      port: 6379
+      timeout: 10s
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 4
+          min-idle: 2
+
+  # ====================== RabbitMQ（测试时禁用） ======================
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASS:guest}
+    virtual-host: /
+    listener:
+      simple:
+        acknowledge-mode: manual
+        retry:
+          enabled: false
+
+# ====================== 日志（测试环境 info） ======================
+logging:
+  level:
+    com.linkhub: info
+    org.springframework.web: info
+    com.baomidou.mybatisplus: info
+    org.springframework.security: info
+
+# 测试时禁用某些功能
+knife4j:
+  enable: false

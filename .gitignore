@@ -1,0 +1,114 @@
+# =====================
+# Maven 构建产物
+# =====================
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+# 新版 Maven Wrapper（3.2+）会自动下载 jar，可忽略；老版本需要提交此 jar
+.mvn/wrapper/maven-wrapper.jar
+
+# =====================
+# IDE 配置
+# =====================
+.idea/
+*.iml
+*.ipr
+*.iws
+*.swp
+*.bak
+*.orig
+*.old
+.vscode/
+.classpath
+.project
+.settings/
+bin/
+out/
+
+# =====================
+# 日志文件
+# =====================
+logs/
+*.log
+*.log.gz
+
+# =====================
+# 操作系统文件
+# =====================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# =====================
+# Docker 相关
+# =====================
+docker-compose.override.yml
+
+# =====================
+# 环境配置（敏感信息）
+# =====================
+# .env 必须单独一行，*.env 匹配不到纯 .env 文件
+.env
+.env.*
+!.env.example
+*.env
+# 含真实密码的配置文件不提交，另提供 .example 模板
+application-dev.yml
+application-prod.yml
+src/main/resources/application-dev.yml
+src/main/resources/application-prod.yml
+# 允许提交的模板文件
+!application-dev.yml.example
+!application-prod.yml.example
+!src/main/resources/application-dev.yml.example
+!src/main/resources/application-prod.yml.example
+
+# =====================
+# 本地数据目录（Redis、MySQL 等）
+# =====================
+# 如果 src/main/resources 下有需要提交的 data/ 目录，请改用更精确的路径
+data/
+redis-data/
+mysql-data/
+redis-cluster/
+*.pid
+*.rdb
+*.aof
+nodes.conf
+
+# =====================
+# 测试相关
+# =====================
+com.linkhub.look-output/
+coverage/
+
+# =====================
+# 压缩包 / 备份
+# =====================
+*.zip
+*.tar
+*.gz
+*.rar
+*.7z
+*.backup
+
+# =====================
+# 项目临时文件
+# =====================
+all_code_context.txt
+get_all_code.txt
+get_code.sh
+HELP.md
+learning-note.md
+
+# =====================
+# 注意：README.md 不建议忽略
+# 如果你确实不想提交，取消下面这行的注释
+# =====================
+# README.md
