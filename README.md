@@ -1,10 +1,10 @@
 # LinkHub
 
-A **URL shortener** backend with Redis caching, Bloom filter, distributed locks, async click analytics, JWT auth, RabbitMQ mail, and an optional LangChain4j AI agent (with **Redis-backed chat memory**). Frontend lives in the sibling folder [`../link-hub-ui`](../link-hub-ui).
+A **URL shortener** backend with Redis caching, Bloom filter, distributed locks, async click analytics, JWT auth, RabbitMQ mail, and an optional LangChain4j AI agent (with **Redis-backed chat memory**). Frontend is a sibling local folder / separate repo: **`link-hub-ui`** (not published with this repository).
 
 > **Disclaimer:** Demo / learning project. Not production-hardened (rate-limit fail-open, redirect allowlist, etc. still have known TODOs).
 
-[中文完整说明](#中文)（英文在前，方便 GitHub 阅读）
+[中文完整说明](#中文)
 
 ---
 
@@ -41,22 +41,22 @@ A **URL shortener** backend with Redis caching, Bloom filter, distributed locks,
 
 ```
 Client / link-hub-ui
-        │
-        ▼
-┌─────────────────┐   JWT      ┌──────────────┐
-│ Controllers     │◄──────────►│ Security     │
-│ /auth /link     │            │ + JWT filter │
-│ /redirect /agent│            └──────────────┘
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐   ┌──────────┐  ┌──────────┐  ┌──────────┐
-│ Services        │──►│  Redis   │  │ RabbitMQ │  │  MySQL   │
-│ ShortLink / Auth│   │ cache    │  │ mail+DLQ │  │ links    │
-│ Bloom / Stats   │   │ Bloom    │  └──────────┘  └──────────┘
-│ Agent tools     │   │ rate     │
-│ Agent memory    │   │ chat mem │
-└─────────────────┘   └──────────┘
+        |
+        v
++-----------------+   JWT      +--------------+
+| Controllers     |----------->| Security     |
+| /auth /link     |            | + JWT filter |
+| /redirect /agent|            +--------------+
++--------+--------+
+         |
+         v
++-----------------+   +----------+  +----------+  +----------+
+| Services        |-->|  Redis   |  | RabbitMQ |  |  MySQL   |
+| ShortLink / Auth|   | cache    |  | mail+DLQ |  | links    |
+| Bloom / Stats   |   | Bloom    |  +----------+  +----------+
+| Agent tools     |   | rate     |
+| Agent memory    |   | chat mem |
++-----------------+   +----------+
 ```
 
 Redirect hot path cares about **cache consistency with ban status** and **spoof-resistant client IP** for rate limits. Agent turns reuse prior messages via Redis when the same user chats again.
@@ -80,7 +80,7 @@ link-hub/                 # this backend repo
 │   └── ...
 └── src/main/resources/
 
-../link-hub-ui/           # Vue3 admin UI (sibling folder, separate repo optional)
+link-hub-ui/              # Vue3 admin UI (sibling local folder / separate repo)
 ```
 
 ---
@@ -169,7 +169,7 @@ docker run --rm -p 18080:18080 --env-file .env link-hub
 
 - Base image: `eclipse-temurin:21-jre`
 - Copies `target/*.jar` into `/app/app.jar`
-- **`EXPOSE 18080`** (matches `server.port`; older drafts wrongly used 9527)
+- **`EXPOSE 18080`** (matches `server.port`)
 
 Day-to-day local work usually uses IDEA + Compose for deps only; the Dockerfile is for packaging the backend for a uniform runtime.
 
@@ -206,9 +206,8 @@ Unified JSON envelope: `{ code, message, data }`.
 ## Security notes (high level)
 
 - Stateless JWT with **access + refresh**; refresh tokens stored in Redis for logout/rotation
-- Token identity anchor is the immutable `userId`: JWT `subject` = userId (`uname` claim is a display-only snapshot); refresh key is `refresh:user:{userId}`; the filter and `/auth/refresh` reload the user via `loadUserById`, so renaming does not break existing tokens. Login still authenticates by username + password.
+- Access and refresh tokens are bound to **userId**, not username: JWT `subject` = userId (`uname` claim is a display-only snapshot); refresh key is `refresh:user:{userId}`; the filter and `/auth/refresh` reload the user via `loadUserById`, so renaming does not break existing tokens. Login still authenticates by username + password.
 - Changing the password or deleting the account removes `refresh:user:{userId}` after the transaction commits; issued access tokens stay valid until they expire (banned accounts are rejected by the filter immediately).
-- Migration: tokens issued before this change (username subject, `refresh:{username}` key) are rejected; users must log in again once.
 - Redirect rate limit by IP; Agent rate limit by user
 - Client IP defaults to `remoteAddr` only (`client-ip.trust-forwarded-headers=false`) to reduce XFF spoofing
 - Ban/delete: cache stores `status`; eviction runs **after transaction commit**
@@ -245,13 +244,13 @@ No license file is attached yet. Treat as personal / academic code unless you ad
 
 ## Author
 
-Built as a full-stack learning project (short-link platform + AI agent).
+Personal project by solonerd.
 
 ---
 
 ## 中文
 
-高性能**短链接平台**（Spring Boot 3 + Redis/MQ + Vue3 管理台 + LangChain4j Agent）。前端在同级目录 [`../link-hub-ui`](../link-hub-ui)。
+高性能**短链接平台**（Spring Boot 3 + Redis/MQ + Vue3 管理台 + LangChain4j Agent）。前端为同级本地目录 / 独立仓库 **`link-hub-ui`**（未随本仓库一并发布）。
 
 > **说明：** 本项目为学习 / 演示用途，未按生产级安全做全面 hardening（限流降级、跳转白名单等仍有已知 TODO）。
 
@@ -286,7 +285,7 @@ Built as a full-stack learning project (short-link platform + AI agent).
 
 ### 仓库结构
 
-与英文 [Repository layout](#repository-layout) 相同：后端在本仓库；`agent/memory` 下为 `RedisChatMemoryStore`；前端在同级 `../link-hub-ui`。
+与英文 [Repository layout](#repository-layout) 相同：后端在本仓库；`agent/memory` 下为 `RedisChatMemoryStore`；前端为同级本地目录 / 独立仓库 `link-hub-ui`。
 
 ### 快速开始
 
@@ -372,7 +371,7 @@ docker run --rm -p 18080:18080 --env-file .env link-hub
 
 - 基础镜像：`eclipse-temurin:21-jre`
 - 将本机 `target/*.jar` 复制为 `/app/app.jar`
-- **`EXPOSE 18080`**（与 `server.port` 一致；旧稿误写过 9527）
+- **`EXPOSE 18080`**（与 `server.port` 一致）
 
 日常本地开发多用 IDEA + Compose 只起依赖；Dockerfile 用于把后端打成统一运行时镜像。
 
@@ -403,9 +402,8 @@ Redis 未启动时 Store Bean 会在运行期失败；Redis 正常时，同一�
 ### 安全说明（概要）
 
 - 无状态 JWT（**access + refresh**）；refresh 存 Redis，便于登出 / 轮换
-- 身份锚点为不可变的 `userId`：JWT `subject` = userId（`uname` claim 仅作展示快照）；refresh 键为 `refresh:user:{userId}`；过滤器与 `/auth/refresh` 通过 `loadUserById` 回查用户，改用户名不会使已有 token 失效。登录仍按用户名 + 密码校验。
+- access / refresh 绑定 **userId** 而非用户名：JWT `subject` = userId（`uname` claim 仅作展示快照）；refresh 键为 `refresh:user:{userId}`；过滤器与 `/auth/refresh` 通过 `loadUserById` 回查用户，改用户名不会使已有 token 失效。登录仍按用户名 + 密码校验。
 - 改密码或注销账号时，事务提交后删除 `refresh:user:{userId}`；已签发的 access 仍到期才失效（封禁账号由过滤器即时拒绝）。
-- 迁移：本次改动前签发的 token（subject 为用户名、键为 `refresh:{username}`）会被拒绝，需重新登录一次。
 - 跳转按 IP 限流；Agent 按用户限流
 - 客户端 IP 默认只用 `remoteAddr`（`client-ip.trust-forwarded-headers=false`），降低 XFF 伪造
 - 封禁 / 删除：缓存带 `status`；删缓存在**事务提交后**执行
@@ -434,4 +432,4 @@ mvn -q test
 
 ### 作者
 
-全栈学习项目（短链平台 + AI Agent），用于实习求职展示。
+solonerd
