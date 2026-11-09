@@ -50,6 +50,7 @@ jwt:
   refresh-expiration-time: 604800000
   filter-order: 1
 
+# 1. 在 security.whitelist 列表中增加一行放行配置
 security:
   whitelist:
     - /auth/**
@@ -60,7 +61,23 @@ security:
     - /webjars/**
     - /error
     - /favicon.ico
-    - /actuator/health       # 可选：健康检查
+    - /actuator/health
+    - /actuator/prometheus   # 🌟 必须放行，防止 Prometheus 抓取时报 401
+
+# 2. 在 application.yml 底部添加 management 节点
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    prometheus:
+      enabled: true
+    health:
+      show-details: always
+  metrics:
+    tags:
+      application: ${spring.application.name:link-hub}      # 可选：健康检查
 
 langchain4j:
   open-ai:
@@ -85,6 +102,10 @@ langchain4j:
       model-name: BAAI/bge-m3
       log-requests: true
       log-responses: true
+
+elasticsearch:
+  server-url: ${ES_SERVER_URL:http://localhost:9200}
+  index-name: linkhub_faq_index
 
 logging:
   pattern:

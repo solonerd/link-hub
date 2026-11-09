@@ -1,3 +1,4 @@
+// 路径：./src/main/java/com/linkhub/agent/tool/ShortLinkTools.java
 package com.linkhub.agent.tool;
 
 import cn.hutool.crypto.digest.DigestUtil;
@@ -24,10 +25,6 @@ import java.time.Duration;
 import java.util.Collections;
 import java.util.function.Supplier;
 
-/**
- * Agent 可调用工具：生成/删除短链、查询概览与统计。
- * 生成接口带短时幂等键，抑制 LLM 重复 tool-call；删除仍依赖 system prompt 二次确认。
- */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -37,13 +34,16 @@ public class ShortLinkTools {
     private final StringRedisTemplate stringRedisTemplate;
 
     private static final String IDEMPOTENT_KEY_PREFIX = "agent:idempotent:generate:";
-    private static final long IDEMPOTENT_EXPIRE_SECONDS = 5;
+    private static final long IDEMPOTENT_EXPIRE_SECONDS = 30; // 升级为 30s，覆盖 LLM 超时重试窗口
+
+    private static final String PENDING_DELETE_PREFIX = "agent:pending_delete:";
+    private static final long PENDING_DELETE_TTL_MINUTES = 5;
+    private static final long MIN_CONFIRM_INTERVAL_MS = 1500; // 至少间隔 1.5s，防 LLM 同轮自问自答连调绕过
 
     @Tool("生成短链接。当用户想把长链接转成短链接时调用。可指定标题。")
     public String generateShortLink(@ToolMemoryId Long userId,
                                     String originalUrl, String title) {
-        return safeExecute(userId, () -> {
-            // userId + URL MD5 作为幂等键，压缩 key 长度并防短时重复生成
+        return safeExecute("generateShortLink", userId, () -> {
             String urlHash = DigestUtil.md5Hex(originalUrl);
             String lockKey = IDEMPOTENT_KEY_PREFIX + userId + ":" + urlHash;
 
@@ -52,7 +52,7 @@ public class ShortLinkTools {
 
             if (Boolean.FALSE.equals(isFirstRequest)) {
                 log.warn("Agent 工具重复调用被拦截, userId={}, originalUrl={}", userId, originalUrl);
-                return "系统检测到您正在重复生成相同的短链，操作已被拦截。请稍后在列表中查看。";
+                return "系统检测到您刚刚已为该网址生成过短链，操作已防重拦截。请直接在短链列表中查看。";
             }
 
             ShortLinkCreateDTO dto = new ShortLinkCreateDTO();
@@ -61,14 +61,35 @@ public class ShortLinkTools {
             Result<String> result = shortLinkService.generateShortLink(dto);
 
             return result.getCode() == 200
-                    ? "生成成功，短码为：" + result.getData()
+                    ? String.format("{\"status\":\"SUCCESS\",\"shortCode\":\"%s\",\"title\":\"%s\"}", result.getData(), dto.getTitle())
                     : "生成失败：" + result.getMessage();
         });
     }
 
-    @Tool("删除短链接。当用户明确要求删除某个短链时调用。")
+    @Tool("删除短链接。首次调用会挂起待确认状态，仅在用户下一轮明确回复确认后二次调用才会真正执行删除。")
     public String deleteShortLink(@ToolMemoryId Long userId, String shortCode) {
-        return safeExecute(userId, () -> {
+        return safeExecute("deleteShortLink", userId, () -> {
+            String pendingKey = PENDING_DELETE_PREFIX + userId + ":" + shortCode;
+            String pendingTimestampStr = stringRedisTemplate.opsForValue().get(pendingKey);
+
+            // 阶段 1：尚未挂起确认 -> 写入挂起状态并拦截，绝不直接删库
+            if (pendingTimestampStr == null) {
+                stringRedisTemplate.opsForValue().set(
+                        pendingKey,
+                        String.valueOf(System.currentTimeMillis()),
+                        Duration.ofMinutes(PENDING_DELETE_TTL_MINUTES));
+                return "【需要二次确认】已在服务端挂起短链 " + shortCode + " 的删除请求（5分钟内有效）。请向用户确认：您即将删除短链 " + shortCode + "，请回复【确认删除】以继续。";
+            }
+
+            // 防护：拦截 LLM 在同一次推理循环内连续调用两次工具试图绕过确认
+            long elapsed = System.currentTimeMillis() - Long.parseLong(pendingTimestampStr);
+            if (elapsed < MIN_CONFIRM_INTERVAL_MS) {
+                log.warn("拦截 LLM 同轮自动连续调用 deleteShortLink, userId={}, shortCode={}, elapsed={}ms", userId, shortCode, elapsed);
+                return "请等待用户亲自回复【确认删除】后再调用此工具，禁止在同一次回复中自动确认。";
+            }
+
+            // 阶段 2：用户已在下一轮对话确认 -> 消费挂起令牌并执行真实删除
+            stringRedisTemplate.delete(pendingKey);
             ShortLinkDelDTO dto = new ShortLinkDelDTO();
             dto.setShortCode(shortCode);
             Result<String> result = shortLinkService.delShortLink(dto);
@@ -78,39 +99,36 @@ public class ShortLinkTools {
 
     @Tool("查询当前用户的短链概览，包括总数量、总点击量、有效短链数。")
     public String getMyOverview(@ToolMemoryId Long userId) {
-        return safeExecute(userId, () -> {
+        return safeExecute("getMyOverview", userId, () -> {
             Result<UserStatsVO> result = shortLinkService.getUserStats();
             if (result.getCode() != 200 || result.getData() == null) {
                 return "查询失败：" + result.getMessage();
             }
             UserStatsVO s = result.getData();
-            return String.format("你目前共有 %d 个短链，总点击量 %d，有效短链 %d 个。",
+            return String.format("{\"totalLinks\":%d,\"totalClicks\":%d,\"activeLinks\":%d}",
                     s.getTotalLinks(), s.getTotalClicks(), s.getActiveLinks());
         });
     }
 
     @Tool("查询某个短链的详细统计信息（点击量、趋势等）。")
     public String getLinkStats(@ToolMemoryId Long userId, String shortCode) {
-        return safeExecute(userId, () -> {
+        return safeExecute("getLinkStats", userId, () -> {
             Result<ShortLinkStatsVO> result = shortLinkService.getLinkStats(shortCode, 7);
             if (result.getCode() != 200 || result.getData() == null) {
                 return "查询失败或短链不存在";
             }
             ShortLinkStatsVO s = result.getData();
-            return String.format("短链 %s（%s）当前点击量 %d，是否过期：%s",
-                    s.getShortCode(), s.getTitle(), s.getClickNum(),
-                    Boolean.TRUE.equals(s.getExpired()) ? "是" : "否");
+            return String.format("{\"shortCode\":\"%s\",\"title\":\"%s\",\"clickNum\":%d,\"expired\":%b}",
+                    s.getShortCode(), s.getTitle(), s.getClickNum(), Boolean.TRUE.equals(s.getExpired()));
         });
     }
 
-    /** 统一登录校验、耗时日志与异常兜底，避免工具异常直接打断对话。 */
-    private String safeExecute(Long userId, Supplier<String> action) {
+    private String safeExecute(String toolName, Long userId, Supplier<String> action) {
         if (userId == null) {
             return "请先登录后再使用助手功能";
         }
 
         String traceId = MDC.get("traceId");
-        // 工具线程可能无 SecurityContext 或残留旧身份：备份原值 → 强制覆盖为 @ToolMemoryId 的 userId → finally 还原
         Authentication prev = SecurityContextHolder.getContext().getAuthentication();
         CustomUserDetails tempUser = new CustomUserDetails(
                 userId, "agent_user", "", Collections.emptyList(),
@@ -119,17 +137,18 @@ public class ShortLinkTools {
         context.setAuthentication(UsernamePasswordAuthenticationToken
                 .authenticated(tempUser, null, tempUser.getAuthorities()));
         SecurityContextHolder.setContext(context);
+        long start = System.currentTimeMillis();
         try {
-            log.info("[{}] 工具执行开始, userId={}", traceId, userId);
-            long start = System.currentTimeMillis();
+            log.info("[AUDIT][{}] tool={} start, userId={}", traceId, toolName, userId);
             String result = action.get();
-            log.info("[{}] 工具执行结束, 耗时={}ms, 结果={}", traceId, (System.currentTimeMillis() - start), result);
+            log.info("[AUDIT][{}] tool={} success, userId={}, cost={}ms, result={}",
+                    traceId, toolName, userId, (System.currentTimeMillis() - start), result);
             return result;
         } catch (Exception e) {
-            log.error("[{}] Agent 工具执行异常, userId={}", traceId, userId, e);
+            log.error("[AUDIT][{}] tool={} error, userId={}, cost={}ms",
+                    traceId, toolName, userId, (System.currentTimeMillis() - start), e);
             return "操作失败：" + (e.getMessage() == null ? "系统异常" : e.getMessage());
         } finally {
-            // 原本无身份则清空，原本有则还原，避免污染线程池
             if (prev == null) {
                 SecurityContextHolder.clearContext();
             } else {
